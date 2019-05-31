@@ -1,17 +1,40 @@
 package dbops
 
 import (
-	"database/sql"
+	"log"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
-func OpenConne() *sql.DB {
-
-}
-
 func AddUserCredential(loginName string, pwd string) error {
+	stmtIns, err := dbConn.Prepare("INSERT INTO users (login_name,pwd) values (?,?)")
+	if err != nil {
+		return err
+	}
+	stmtIns.Exec(loginName, pwd)
+	stmtIns.Close()
+	return nil
 
 }
 
 func GetUserCredential(loginName string) (string, error) {
-
+	stmtOut, err := dbConn.Prepare("SELECT pwd FROM users WHERE login_name = ?")
+	if err != nil {
+		log.Printf("%v", err)
+		return "", err
+	}
+	var pwd string
+	stmtOut.QueryRow(loginName).Scan(&pwd)
+	stmtOut.Close()
+	return pwd, nil
+}
+func DeleteUser(loginName string, pwd string) error {
+	stmtDel, err := dbConn.Prepare("DELETE FROM users WHERE login_name = ? AND pwd = ?")
+	if err != nil {
+		log.Printf("DELETEUSER err : %v", err)
+		return err
+	}
+	stmtDel.Exec(loginName, pwd)
+	stmtDel.Close()
+	return nil
 }
