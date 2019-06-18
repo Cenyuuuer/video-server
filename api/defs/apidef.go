@@ -1,6 +1,13 @@
 package defs
 
 type UserCredential struct {
-	Username String `json:"user_name"`
-	Pwd      String `json:"pwd"`
+	Username string `json:"user_name"`
+	Pwd      string `json:"pwd"`
+}
+
+type VideoInfo struct {
+	Id           string
+	AuthorId     string
+	Name         string
+	DisplayCtime string
 }

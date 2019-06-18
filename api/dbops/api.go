@@ -1,18 +1,24 @@
 package dbops
 
 import (
+	"database/sql"
 	"log"
-
+	"video_server/api/defs"
 	_ "github.com/go-sql-driver/mysql"
+	"video_server/api/utils"
+	"time"
 )
 
 func AddUserCredential(loginName string, pwd string) error {
-	stmtIns, err := dbConn.Prepare("INSERT INTO users (login_name,pwd) values (?,?)")
+	stmtIns, err := dbConn.Prepare("INSERT INTO users (login_name,pwd) values (?,?)")//预编译
 	if err != nil {
 		return err
 	}
-	stmtIns.Exec(loginName, pwd)
-	stmtIns.Close()
+	_ , err = stmtIns.Exec(loginName, pwd)//defer函数在栈退出的时候才会调用，实际使用性能会有一点损耗,但是方法err跳出很多，所以使用defer
+	if err != nil{
+		return err 
+	}
+	defer stmtIns.Close()
 	return nil
 
 }
@@ -24,8 +30,11 @@ func GetUserCredential(loginName string) (string, error) {
 		return "", err
 	}
 	var pwd string
-	stmtOut.QueryRow(loginName).Scan(&pwd)
-	stmtOut.Close()
+	err = stmtOut.QueryRow(loginName).Scan(&pwd)
+	if err != nil && err != sql.ErrNoRows{//ErrNoRows是scan带出的一个err，没有数据
+		return "",err
+	}
+	defer stmtOut.Close()
 	return pwd, nil
 }
 func DeleteUser(loginName string, pwd string) error {
@@ -34,7 +43,116 @@ func DeleteUser(loginName string, pwd string) error {
 		log.Printf("DELETEUSER err : %v", err)
 		return err
 	}
-	stmtDel.Exec(loginName, pwd)
-	stmtDel.Close()
+	_ ,err = stmtDel.Exec(loginName, pwd)
+	if err != nil {
+		return err 
+	}
+	defer stmtDel.Close()
 	return nil
+}
+/**
+添加一个video
+*/
+func AddNewVideo(aid int,name string) (*defs.VideoInfo,error){
+	vid , err := utils.NewUUID();
+	if err != nil{
+		return nil , err 
+	}
+	t := time.Now()
+	ctime := t.Format("Jan 02 2006, 15:04:05") //golang时间远点
+	stmtIns , err := dbConn.Prepare(`INSERT INTO video_info  
+	(id,author_id,name,desplay_ctime) VALUES (?,?,?,?)`)
+	if err != nil {
+		return err
+	}
+	_ , err := stmtIns.Exec(vid,aid,name,ctime)
+	if err != nil{
+		return nil 
+	}
+	res := &defs.VideoInfo{Id: vid,AuthorId: aid,Name: name ,DisplayCtime ctime}
+	defer stmtIns.Close()
+	return res,nil	
+}
+func GetVideoInfo(vid string) (*defs.VideoInfo, error) {
+	stmtOut, err := dbConn.Prepare("SELECT author_id, name, display_ctime FROM video_info WHERE id=?")
+
+	var aid int
+	var dct string
+	var name string
+
+	err = stmtOut.QueryRow(vid).Scan(&aid, &name, &dct)
+	if err != nil && err != sql.ErrNoRows{
+		return nil, err
+	}
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+
+	defer stmtOut.Close()
+
+	res := &defs.VideoInfo{Id: vid, AuthorId: aid, Name: name, DisplayCtime: dct}
+
+	return res, nil
+}
+
+func DeleteVideoInfo(vid string) error {
+	stmtDel, err := dbConn.Prepare("DELETE FROM video_info WHERE id=?")
+	if err != nil {
+		return err
+	}
+
+	_, err = stmtDel.Exec(vid)
+	if err != nil {
+		return err
+	}
+
+	defer stmtDel.Close()
+	return nil
+}
+
+func AddNewComments(vid string, aid int, content string) error {
+	id, err := utils.NewUUID()
+	if err != nil {
+		return err
+	}
+
+	stmtIns, err := dbConn.Prepare("INSERT INTO comments (id, video_id, author_id, content) values (?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+
+	_, err = stmtIns.Exec(id, vid, aid, content)
+	if err != nil {
+		return err
+	}
+
+	defer stmtIns.Close()
+	return nil
+}
+
+func ListComments(vid string, from, to int) ([]*defs.Comment, error) {
+	stmtOut, err := dbConn.Prepare(` SELECT comments.id, users.Login_name, comments.content FROM comments
+		INNER JOIN users ON comments.author_id = users.id
+		WHERE comments.video_id = ? AND comments.time > FROM_UNIXTIME(?) AND comments.time <= FROM_UNIXTIME(?)`)
+
+	var res []*defs.Comment
+
+	rows, err := stmtOut.Query(vid, from, to)
+	if err != nil {
+		return res, err
+	}
+
+	for rows.Next() {
+		var id, name, content string
+		if err := rows.Scan(&id, &name, &content); err != nil {
+			return res, err
+		}
+
+		c := &defs.Comment{Id: id, VideoId: vid, Author: name, Content: content}
+		res = append(res, c)
+	}
+	defer stmtOut.Close()
+
+	return res, nil
 }
